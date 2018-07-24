@@ -21,7 +21,6 @@ truffle console
 #进入后执行
 let contract;
 Roulette.deployed().then(instance => contract = instance);
-contract.buyKey();#buy key
 contract.buyKey({from: web3.eth.accounts[1]});#替换 account, 执行10次
 contract.winner(); #查看 winner, 然后根据地址查看余额情况
 ```
