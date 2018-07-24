@@ -3,52 +3,58 @@ pragma solidity ^0.4.23;
 import './ArrayUtil.sol';
 
 contract Roulette {
-    address public owner;
 
     // --------  程序计数 ---------
-    uint public randNonce = 0; // 随机数(不安全)
-    uint public buyCount = 0;  // 购买数量
-    uint public allMoney = 0;  // 支付ether 总量统计
+    uint public randNonce = 0;          // 随机数(不安全)
+    uint public buyCount = 0;           // 购买数量
+    uint public allMoney = 0;           // 支付ether 总量统计
 
     // --------  设定 ---------
-    uint payMoney = 1000000000;// 买key的钱: 1gwei
-    uint ALL_CUSTOMER = 10; // 限定被买多少次开启转盘
-    uint TIMES = 10;        // 设定转几次转盘
+    uint payMoney = 1000000000000000000;// 买key的钱: 1 ether
+    uint ALL_CUSTOMER = 10;             // 限定被买多少次开启转盘
+    uint TIMES = 10;                    // 设定转几次转盘
 
 
     // --------  程序数据 ---------
-    mapping(address => uint) public P;
-    address [] public addresses;
-    address public winner;
-    uint public status;     // 1.进行中  2.已结束
+    mapping(address => uint) public P;  // 存储玩家对应概率
+    address [] public addresses;        // 储存所有玩家地址, 用于遍历 P
+    address public owner;               // 奖池存放地址
+    uint public status;                 // 1.进行中  2.已结束  0.保留
+
+    address public winner;              // 最后获胜者地址
 
     constructor() public payable{
-        owner = msg.sender;
+        owner = this;
         status = 1;
     }
 
-    function getBalance() constant returns (address){
-        return this;
+    function getBalance() constant returns (uint){
+        return this.balance;
     }
 
     function buyKey() payable {
         require(status == 1, 'Not running!');
         require(msg.value == payMoney, 'You need pay 1 gwei!');
         require(buyCount < ALL_CUSTOMER, 'Sell out, wait for open!');
+
         address key = msg.sender;
-        uint money = msg.value;
-        owner.transfer(money);
-        allMoney = allMoney + money;
-        buyCount++;
-        if (buyCount == ALL_CUSTOMER) {
-            status = 2;
-        }
         bool exists = ArrayUtil.contains(addresses, key);
         if (exists) {
+            require(P[key] / p() < ALL_CUSTOMER / 4, 'You can not buy more than 1/4!');
             P[key] = P[key] + p();
         } else {
             addresses.push(key);
             P[key] = p();
+        }
+
+        uint money = msg.value;
+        address(owner).send(money);
+
+        allMoney = allMoney + money;
+        buyCount++;
+        if (buyCount == ALL_CUSTOMER) {
+            status = 2;
+            check();
         }
     }
 
@@ -61,11 +67,10 @@ contract Roulette {
         return 1;
     }
 
-    function check() payable returns (address){
-        address [] tempArray;
+    address [] tempArray;
+
+    function check() payable {
         require(status == 2, 'Not Over!');
-        require(msg.sender == owner, 'Must from contract owner!');
-        require(msg.value == allMoney, 'You must pay all!');
 
         for (uint i = 0; i < TIMES; i++) {
             address temp = roulette();
@@ -75,21 +80,26 @@ contract Roulette {
         randNonce++;
         winner = tempArray[random];
         //最后 用合约地址账户调用此方法
-        winner.transfer(msg.value);
-        status = 0;
+        address(winner).transfer(address(owner).balance);
         clear();
-        temp = winner;
-        delete winner;
-        return temp;
     }
 
+    /**
+     * 清盘
+     */
     function clear() {
         for (uint i = 0; i < addresses.length; i++) {
             delete P[addresses[i]];
         }
         delete addresses;
+        delete tempArray;
+        delete buyCount;
+        status = 1;
     }
 
+    /**
+     * 轮盘赌算法
+     */
     function roulette() returns (address) {
         uint random = uint(keccak256(now, msg.sender, randNonce)) % ALL_CUSTOMER;
         randNonce++;
